@@ -1,24 +1,202 @@
-from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage
-from typing import List
-from typing import Annotated
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import RemoveMessage
-from langchain_core.tools import tool
-from datetime import date, timedelta, datetime
 import functools
 import pandas as pd
 import os
+import json
+import traceback
 from dateutil.relativedelta import relativedelta
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage, RemoveMessage
+from typing import List, Annotated, Dict, Any, Tuple
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import tool
+from datetime import date, timedelta, datetime
+
 import tradingagents.dataflows.interface as interface
 from tradingagents.default_config import DEFAULT_CONFIG
-from langchain_core.messages import HumanMessage
-
-# 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
-from tradingagents.utils.tool_logging import log_tool_call, log_analysis_step
+from tradingagents.utils.tool_logging import log_tool_call, log_analysis_step, log_analyst_module
+from tradingagents.utils.stock_utils import StockUtils
+from tradingagents.agents.utils.instrument_utils import build_instrument_context
+from tradingagents.agents.utils.google_tool_handler import GoogleToolCallHandler
+from tradingagents.config.prompts import ANALYST_SYSTEM_PROMPT
 
 logger = get_logger('agents')
+
+
+def create_analyst_node(
+    llm: Any,
+    analyst_type: str,
+    output_format: str,
+    tools: List[Any],
+    special_requirements: str = ""
+):
+    """
+    统一的分析师节点生成器，减少冗余代码并统一处理逻辑。
+    
+    Args:
+        llm: 绑定的语言模型
+        analyst_type: 分析师类型 (如 "市场", "基本面", "新闻", "情绪")
+        output_format: 报告输出格式模板
+        tools: 该分析师可用的工具列表
+        special_requirements: 特定分析要求
+    """
+    
+    def analyst_node(state):
+        node_name = f"{analyst_type}分析师"
+        report_key = f"{analyst_type.lower()}_report"
+        tool_call_count_key = f"{analyst_type.lower()}_tool_call_count"
+        
+        logger.debug(f"🔍 [{node_name}] 节点开始执行")
+        
+        # 🔧 工具调用计数器 - 防止无限循环
+        tool_call_count = state.get(tool_call_count_key, 0)
+        max_tool_calls = 3
+        
+        # 检查消息历史中是否有 ToolMessage，更新计数
+        messages = state.get("messages", [])
+        tool_message_count = sum(1 for msg in messages if isinstance(msg, ToolMessage))
+        if tool_message_count > tool_call_count:
+            tool_call_count = tool_message_count
+            
+        logger.info(f"🔧 [{node_name}] 工具调用计数: {tool_call_count}/{max_tool_calls}")
+        
+        current_date = state["trade_date"]
+        ticker = state["company_of_interest"]
+        
+        # 获取市场信息
+        market_info = StockUtils.get_market_info(ticker)
+        instrument_context = build_instrument_context(ticker)
+        
+        # 尝试获取公司名称
+        company_name = state.get("company_name")
+        if not company_name:
+            # 简单回退逻辑
+            if market_info['is_china']:
+                try:
+                    from tradingagents.dataflows.interface import get_china_stock_info_unified
+                    stock_info = get_china_stock_info_unified(ticker)
+                    if stock_info and "股票名称:" in stock_info:
+                        company_name = stock_info.split("股票名称:")[1].split("\n")[0].strip()
+                except Exception:
+                    pass
+            
+            if not company_name:
+                company_name = ticker
+
+        # 构建工具名称列表用于 Prompt
+        tool_names_str = ", ".join([getattr(t, "name", str(t)) for t in tools])
+
+        # 准备 Prompt 变量
+        prompt_vars = {
+            "analyst_type": analyst_type,
+            "company_name": company_name,
+            "ticker": ticker,
+            "market_name": market_info['market_name'],
+            "currency_name": market_info['currency_name'],
+            "currency_symbol": market_info['currency_symbol'],
+            "current_date": current_date,
+            "instrument_context": instrument_context,
+            "tool_names": tool_names_str,
+            "output_format": output_format.format(
+                company_name=company_name,
+                ticker=ticker,
+                market_name=market_info['market_name'],
+                currency_symbol=market_info['currency_symbol']
+            )
+        }
+
+        # 构建系统提示词
+        system_prompt = ANALYST_SYSTEM_PROMPT.format(**prompt_vars)
+        if special_requirements:
+            system_prompt += f"\n\n**特定要求：**\n{special_requirements}"
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="messages"),
+        ])
+
+        # 处理 Google 模型的特殊情况
+        if GoogleToolCallHandler.is_google_model(llm):
+            logger.info(f"🤖 [{node_name}] 检测到 Google 模型，使用统一处理器")
+            
+            # 绑定工具
+            llm_with_tools = llm.bind_tools(tools)
+            chain = prompt | llm_with_tools
+            
+            # 第一次调用
+            result = chain.invoke({"messages": messages})
+            
+            # 使用 GoogleToolCallHandler 处理后续逻辑
+            analysis_prompt_template = GoogleToolCallHandler.create_analysis_prompt(
+                ticker=ticker,
+                company_name=company_name,
+                analyst_type=f"{analyst_type}分析",
+                specific_requirements=special_requirements
+            )
+            
+            report, final_messages = GoogleToolCallHandler.handle_google_tool_calls(
+                result=result,
+                llm=llm,
+                tools=tools,
+                state=state,
+                analysis_prompt_template=analysis_prompt_template,
+                analyst_name=node_name
+            )
+            
+            return {
+                "messages": final_messages,
+                report_key: report,
+                tool_call_count_key: tool_call_count + 1
+            }
+        
+        # 标准模型处理逻辑 (OpenAI, DeepSeek, Anthropic, etc.)
+        chain = prompt | llm.bind_tools(tools)
+        result = chain.invoke({"messages": messages})
+        
+        # 检查是否调用了工具
+        if not hasattr(result, 'tool_calls') or not result.tool_calls:
+            logger.info(f"✅ [{node_name}] LLM 直接生成了报告")
+            return {
+                "messages": [result],
+                report_key: result.content,
+                tool_call_count_key: tool_call_count + 1
+            }
+        
+        # 如果有工具调用，执行它们
+        logger.info(f"🔧 [{node_name}] 检测到工具调用: {[tc['name'] for tc in result.tool_calls]}")
+        tool_messages = []
+        for tool_call in result.tool_calls:
+            tool_name = tool_call['name']
+            tool_args = tool_call['args']
+            tool_id = tool_call['id']
+            
+            # 查找并执行工具
+            tool_result = "未找到工具"
+            for t in tools:
+                if getattr(t, "name", "") == tool_name:
+                    try:
+                        tool_result = t.invoke(tool_args)
+                    except Exception as e:
+                        tool_result = f"工具执行失败: {str(e)}"
+                    break
+            
+            tool_messages.append(ToolMessage(content=str(tool_result), tool_call_id=tool_id))
+        
+        # 基于工具结果生成最终报告
+        final_prompt = f"""现在请基于上述工具获取的数据，生成详细的{analyst_type}报告。
+请严格遵守之前要求的输出格式。"""
+        
+        final_messages = messages + [result] + tool_messages + [HumanMessage(content=final_prompt)]
+        final_result = llm.invoke(final_messages)
+        
+        logger.info(f"✅ [{node_name}] 最终报告生成完成")
+        return {
+            "messages": [result] + tool_messages + [final_result],
+            report_key: final_result.content,
+            tool_call_count_key: tool_call_count + 1
+        }
+    
+    return analyst_node
 
 
 def create_msg_delete():
@@ -35,6 +213,29 @@ def create_msg_delete():
         return {"messages": removal_operations + [placeholder]}
     
     return delete_messages
+
+
+def create_analysts_join_node():
+    """Create a node that joins parallel analyst branches and cleans up messages."""
+    def join_analysts(state):
+        messages = state["messages"]
+        
+        logger.info(f"🤝 [Join Analysts] 并行分析完成，正在清理 {len(messages)} 条中间消息")
+        
+        # 保留初始消息 (HumanMessage)，删除所有 AI、Tool 和中间 Human 消息
+        # 这样可以减少后续节点的上下文负担
+        removal_operations = []
+        for i, m in enumerate(messages):
+            if i == 0: # 保留第一条初始请求消息
+                continue
+            removal_operations.append(RemoveMessage(id=m.id))
+            
+        # 添加一个占位符以确保消息列表不为空且格式正确
+        placeholder = HumanMessage(content="Analyst reports generated. Proceeding to debate.")
+        
+        return {"messages": removal_operations + [placeholder]}
+    
+    return join_analysts
 
 
 class Toolkit:

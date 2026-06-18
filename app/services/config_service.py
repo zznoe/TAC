@@ -1122,10 +1122,10 @@ class ConfigService:
                             "response_time": response_time,
                             "details": None
                         }
-                    except:
+                    except Exception as e:
                         return {
                         "success": False,
-                        "message": f"API测试失败: HTTP {response.status_code}",
+                        "message": f"API测试失败: HTTP {response.status_code} - {str(e)}",
                         "response_time": response_time,
                         "details": None
                     }
@@ -3559,10 +3559,10 @@ class ConfigService:
                         "success": False,
                         "message": f"{display_name} API请求错误: {error_msg}"
                     }
-                except:
+                except Exception as e:
                     return {
                         "success": False,
-                        "message": f"{display_name} API请求格式错误"
+                        "message": f"{display_name} API请求格式错误: {str(e)}"
                     }
             elif response.status_code == 403:
                 print(f"❌ [Google AI 测试] 403 错误，响应内容: {response.text[:500]}")
@@ -3587,10 +3587,10 @@ class ConfigService:
                             "success": False,
                             "message": f"{display_name} 服务暂时不可用: {error_msg}"
                         }
-                except:
+                except Exception as e:
                     return {
                         "success": False,
-                        "message": f"{display_name} 服务暂时不可用 (HTTP 503)"
+                        "message": f"{display_name} 服务暂时不可用 (HTTP 503): {str(e)}"
                     }
             else:
                 print(f"❌ [Google AI 测试] {response.status_code} 错误，响应内容: {response.text[:500]}")
@@ -3953,10 +3953,10 @@ class ConfigService:
                         "success": False,
                         "message": f"{display_name} API测试失败: {error_msg}"
                     }
-                except:
+                except Exception as e:
                     return {
                         "success": False,
-                        "message": f"{display_name} API测试失败: HTTP {response.status_code}"
+                        "message": f"{display_name} API测试失败: HTTP {response.status_code} - {str(e)}"
                     }
 
         except Exception as e:
@@ -4150,11 +4150,11 @@ class ConfigService:
                         "success": False,
                         "message": f"{display_name} API请求失败: {error_msg}"
                     }
-                except:
-                    print(f"❌ HTTP 错误: {response.status_code}")
+                except Exception as e:
+                    print(f"❌ HTTP 错误: {response.status_code}, 异常: {e}")
                     return {
                         "success": False,
-                        "message": f"{display_name} API请求失败: HTTP {response.status_code}, 响应: {response.text[:200]}"
+                        "message": f"{display_name} API请求失败: HTTP {response.status_code}, 响应: {response.text[:200]}, 异常: {str(e)}"
                     }
 
         except Exception as e:
@@ -4680,14 +4680,15 @@ class ConfigService:
                         "success": False,
                         "message": f"{display_name} API测试失败: {error_msg}"
                     }
-                except:
+                except Exception as e:
                     logger.error(f"❌ [{display_name}] API测试失败")
                     logger.error(f"   请求URL: {url}")
                     logger.error(f"   状态码: {response.status_code}")
                     logger.error(f"   响应内容: {response.text[:500]}")
+                    logger.error(f"   异常: {e}")
                     return {
                         "success": False,
-                        "message": f"{display_name} API测试失败: HTTP {response.status_code}"
+                        "message": f"{display_name} API测试失败: HTTP {response.status_code} - {str(e)}"
                     }
 
         except Exception as e:

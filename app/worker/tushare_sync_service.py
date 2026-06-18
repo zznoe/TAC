@@ -15,6 +15,7 @@ from app.core.database import get_mongo_db
 from app.core.config import settings
 from app.core.rate_limiter import get_tushare_rate_limiter
 from app.utils.timezone import now_tz
+from app.utils.bulk_operations import efficient_bulk_upsert
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ class TushareSyncService:
             return stats
     
     async def _process_basic_info_batch(self, batch: List[Dict[str, Any]], force_update: bool) -> Dict[str, Any]:
-        """处理基础信息批次"""
+        """处理基础信息批次（优化版：使用批量读取和批量写入）"""
         batch_stats = {
             "success_count": 0,
             "error_count": 0,
@@ -166,61 +167,64 @@ class TushareSyncService:
             "errors": []
         }
         
-        for stock_info in batch:
-            try:
-                # 🔥 先转换为字典格式（如果是Pydantic模型）
+        try:
+            # 1. 数据预处理：收集代码并规范化格式
+            codes = []
+            data_map = {}
+            for stock_info in batch:
                 if hasattr(stock_info, 'model_dump'):
-                    stock_data = stock_info.model_dump()
+                    data = stock_info.model_dump()
                 elif hasattr(stock_info, 'dict'):
-                    stock_data = stock_info.dict()
+                    data = stock_info.dict()
                 else:
-                    stock_data = stock_info
-
-                code = stock_data["code"]
-
-                # 检查是否需要更新
-                if not force_update:
-                    existing = await self.stock_service.get_stock_basic_info(code)
-                    if existing:
-                        # 🔥 existing 也可能是 Pydantic 模型，需要安全获取属性
-                        existing_dict = existing.model_dump() if hasattr(existing, 'model_dump') else (existing.dict() if hasattr(existing, 'dict') else existing)
-                        if self._is_data_fresh(existing_dict.get("updated_at"), hours=24):
-                            batch_stats["skipped_count"] += 1
-                            continue
-
-                # 更新到数据库（指定数据源为 tushare）
-                success = await self.stock_service.update_stock_basic_info(code, stock_data, source="tushare")
-                if success:
-                    batch_stats["success_count"] += 1
-                else:
-                    batch_stats["error_count"] += 1
-                    batch_stats["errors"].append({
-                        "code": code,
-                        "error": "数据库更新失败",
-                        "context": "update_stock_basic_info"
-                    })
-
-            except Exception as e:
-                batch_stats["error_count"] += 1
-                # 🔥 安全获取 code（处理 Pydantic 模型和字典）
-                try:
-                    if hasattr(stock_info, 'code'):
-                        code = stock_info.code
-                    elif hasattr(stock_info, 'model_dump'):
-                        code = stock_info.model_dump().get("code", "unknown")
-                    elif hasattr(stock_info, 'dict'):
-                        code = stock_info.dict().get("code", "unknown")
-                    else:
-                        code = stock_info.get("code", "unknown")
-                except:
-                    code = "unknown"
-
-                batch_stats["errors"].append({
-                    "code": code,
-                    "error": str(e),
-                    "context": "_process_basic_info_batch"
-                })
-        
+                    data = stock_info
+                
+                code = data.get("code")
+                if code:
+                    codes.append(code)
+                    data_map[code] = data
+            
+            # 2. 批量检查现有数据的时效性
+            skip_codes = set()
+            if not force_update and codes:
+                # 获取所有现有记录
+                existing_cursor = self.db.stock_basic_info.find(
+                    {"code": {"$in": codes}, "source": "tushare"},
+                    {"code": 1, "updated_at": 1}
+                )
+                async for doc in existing_cursor:
+                    if self._is_data_fresh(doc.get("updated_at"), hours=24):
+                        skip_codes.add(doc["code"])
+            
+            batch_stats["skipped_count"] = len(skip_codes)
+            
+            # 3. 准备需要更新的数据
+            to_upsert = []
+            for code, data in data_map.items():
+                if code in skip_codes:
+                    continue
+                
+                # 规范化数据字段
+                data["updated_at"] = datetime.utcnow()
+                data["symbol"] = data.get("symbol") or code
+                data["source"] = "tushare"
+                to_upsert.append(data)
+            
+            # 4. 执行批量 Upsert
+            if to_upsert:
+                res = await efficient_bulk_upsert(
+                    self.db.stock_basic_info, 
+                    to_upsert, 
+                    key_fields=["code", "source"]
+                )
+                batch_stats["success_count"] = res["matched"] + res["upserted"]
+                batch_stats["error_count"] = res["errors"]
+            
+        except Exception as e:
+            logger.error(f"批量处理股票基础信息异常: {e}")
+            batch_stats["errors"].append({"error": str(e), "context": "_process_basic_info_batch"})
+            batch_stats["error_count"] = len(batch)
+            
         return batch_stats
     
     # ==================== 实时行情同步 ====================
@@ -337,33 +341,23 @@ class TushareSyncService:
             stats["total_processed"] = len(quotes_map)
 
             # 批量保存到数据库
-            success_count = 0
-            error_count = 0
-
-            for symbol, quote_data in quotes_map.items():
-                try:
-                    # 保存到数据库
-                    result = await self.stock_service.update_market_quotes(symbol, quote_data)
-                    if result:
-                        success_count += 1
-                    else:
-                        error_count += 1
-                        stats["errors"].append({
-                            "code": symbol,
-                            "error": "更新数据库失败",
-                            "context": "sync_realtime_quotes"
-                        })
-                except Exception as e:
-                    error_count += 1
-                    stats["errors"].append({
-                        "code": symbol,
-                        "error": str(e),
-                        "context": "sync_realtime_quotes"
-                    })
-
-            stats["success_count"] = success_count
-            stats["error_count"] = error_count
-
+            if quotes_map:
+                to_upsert = []
+                for symbol, quote_data in quotes_map.items():
+                    symbol6 = str(symbol).zfill(6)
+                    quote_data["updated_at"] = datetime.utcnow()
+                    quote_data["symbol"] = symbol6
+                    quote_data["code"] = symbol6
+                    to_upsert.append(quote_data)
+                
+                res = await efficient_bulk_upsert(
+                    self.db.market_quotes,
+                    to_upsert,
+                    key_fields=["symbol"]
+                )
+                stats["success_count"] = res["matched"] + res["upserted"]
+                stats["error_count"] = res["errors"]
+            
             # 完成统计
             stats["end_time"] = datetime.utcnow()
             stats["duration"] = (stats["end_time"] - stats["start_time"]).total_seconds()
@@ -800,7 +794,7 @@ class TushareSyncService:
                         last_date_obj = datetime.strptime(latest_date, '%Y-%m-%d')
                         next_date = last_date_obj + timedelta(days=1)
                         return next_date.strftime('%Y-%m-%d')
-                    except:
+                    except Exception:
                         # 如果日期格式不对，直接返回
                         return latest_date
                 else:

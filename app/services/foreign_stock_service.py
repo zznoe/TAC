@@ -1430,7 +1430,7 @@ class ForeignStockService:
                 # Alpha Vantage 时间格式: 20240101T120000
                 pub_time = datetime.strptime(time_published, '%Y%m%dT%H%M%S')
                 pub_time_str = pub_time.strftime('%Y-%m-%d %H:%M:%S')
-            except:
+            except Exception:
                 pub_time_str = time_published
 
             # 提取相关股票的情感分数

@@ -371,7 +371,7 @@ pre, code {
             try:
                 if 'output_file' in locals() and os.path.exists(output_file):
                     os.unlink(output_file)
-            except:
+            except Exception:
                 pass
             raise Exception(f"生成 Word 文档失败: {e}")
     

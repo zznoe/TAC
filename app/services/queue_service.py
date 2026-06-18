@@ -26,9 +26,13 @@ from app.services.queue import (
     USER_PROCESSING_PREFIX,
     GLOBAL_CONCURRENT_KEY,
     VISIBILITY_TIMEOUT_PREFIX,
+    TIMEOUT_ZSET,
     DEFAULT_USER_CONCURRENT_LIMIT,
     GLOBAL_CONCURRENT_LIMIT,
     VISIBILITY_TIMEOUT_SECONDS,
+)
+from app.services.queue.helpers import (
+    DEQUEUE_LUA_SCRIPT,
     check_user_concurrent_limit,
     check_global_concurrent_limit,
     mark_task_processing,
@@ -97,10 +101,23 @@ class QueueService:
         logger.info(f"任务已入队: {task_id}")
         return task_id
 
-    async def dequeue_task(self, worker_id: str) -> Optional[Dict[str, Any]]:
-        """从FIFO队列中取出任务"""
+    async def dequeue_task(self, worker_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """原子地从队列中取出任务（使用 Lua 脚本确保并发限制）"""
         try:
-            # 从FIFO队列获取任务
+            # 如果指定了用户，检查该用户的并发；否则只做基本出队
+            # 实际上 DEQUEUE_LUA_SCRIPT 需要特定的 user_processing_key
+            # 这里我们假设从 READY_LIST 取出的任务是随机用户的，
+            # 复杂的并发控制通常需要按用户分队列，或者在 Lua 中处理。
+            
+            # 目前的实现逻辑：
+            # 我们先尝试 RPOP，如果是空就返回。
+            # 如果有值，我们不能原子检查该用户的限制，因为我们还没拿到 task_id 就不知道 user_id。
+            
+            # 优化方案：
+            # 1. 仍然使用 RPOP。
+            # 2. 拿到 task_id 后，获取详情拿到 user_id。
+            # 3. 使用一个更小的 Lua 脚本原子地检查并发并标记处理中。
+            
             task_id = await self.r.rpop(READY_LIST)
             if not task_id:
                 return None
@@ -112,16 +129,41 @@ class QueueService:
                 return None
 
             user_id = task_data.get("user")
-
-            # 再次检查并发限制（防止竞态条件）
-            if not await self._check_user_concurrent_limit(user_id):
-                # 如果超过限制，将任务放回队列
+            
+            # 使用 Lua 脚本原子检查用户和全局并发限制并标记
+            # KEYS: [USER_PROCESSING_KEY, SET_PROCESSING]
+            # ARGS: [TASK_ID, USER_LIMIT, GLOBAL_LIMIT]
+            MARK_LUA = """
+            local user_key = KEYS[1]
+            local global_key = KEYS[2]
+            local task_id = ARGS[1]
+            local user_limit = tonumber(ARGS[2])
+            local global_limit = tonumber(ARGS[3])
+            
+            if redis.call('SCARD', global_key) >= global_limit then
+                return "GLOBAL_LIMIT"
+            end
+            if redis.call('SCARD', user_key) >= user_limit then
+                return "USER_LIMIT"
+            end
+            
+            redis.call('SADD', user_key, task_id)
+            redis.call('SADD', global_key, task_id)
+            return "OK"
+            """
+            
+            res = await self.r.eval(
+                MARK_LUA, 2, 
+                USER_PROCESSING_PREFIX + user_id, 
+                SET_PROCESSING,
+                task_id, self.user_concurrent_limit, self.global_concurrent_limit
+            )
+            
+            if res != "OK":
+                # 重新入队
                 await self.r.lpush(READY_LIST, task_id)
-                logger.warning(f"用户 {user_id} 并发限制，任务重新入队: {task_id}")
+                logger.warning(f"任务 {task_id} 重新入队 (原因: {res})")
                 return None
-
-            # 标记任务为处理中
-            await self._mark_task_processing(task_id, user_id, worker_id)
 
             # 设置可见性超时
             await self._set_visibility_timeout(task_id, worker_id)
@@ -271,29 +313,22 @@ class QueueService:
         }
 
     async def cleanup_expired_tasks(self):
-        """清理过期任务（可见性超时）"""
+        """清理过期任务（使用 ZSET 高效查询）"""
         try:
-            # 获取所有可见性超时键
-            timeout_keys = await self.r.keys(VISIBILITY_TIMEOUT_PREFIX + "*")
-
             current_time = int(time.time())
-            expired_tasks = []
+            # 获取所有已过期的任务 ID
+            expired_tasks = await self.r.zrangebyscore(TIMEOUT_ZSET, 0, current_time)
 
-            for timeout_key in timeout_keys:
-                timeout_data = await self.r.hgetall(timeout_key)
-                if timeout_data:
-                    timeout_at = int(timeout_data.get("timeout_at", 0))
-                    if current_time > timeout_at:
-                        task_id = timeout_data.get("task_id")
-                        if task_id:
-                            expired_tasks.append(task_id)
+            if not expired_tasks:
+                return
 
             # 处理过期任务
             for task_id in expired_tasks:
+                if isinstance(task_id, bytes):
+                    task_id = task_id.decode('utf-8')
                 await self._handle_expired_task(task_id)
 
-            if expired_tasks:
-                logger.warning(f"处理了 {len(expired_tasks)} 个过期任务")
+            logger.warning(f"⏰ 处理了 {len(expired_tasks)} 个过期任务")
 
         except Exception as e:
             logger.error(f"清理过期任务失败: {e}")

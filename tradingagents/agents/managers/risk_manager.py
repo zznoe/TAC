@@ -12,24 +12,41 @@ class QuantitativeRiskEngine:
     """传统量化风控引擎：双轨制风控的硬性规则层"""
     
     @staticmethod
-    def evaluate(trader_plan: str, market_report: str) -> dict:
+    def evaluate(trader_plan_json: str, market_report: str) -> dict:
         """
         评估交易计划，执行硬性风控规则。
-        这里可以接入实际的 VaR 计算、波动率检测或凯利公式。
         """
         logger.info("🛡️ [Quant Risk Engine] 执行量化风控规则检查...")
         
-        # 提取目标价和当前价（简化实现，实际应从结构化数据或行情API获取）
-        target_price_match = re.search(r'目标价.*?(\d+(?:\.\d+)?)', trader_plan)
-        
-        # 假设如果波动率极高或市场报告中包含"熔断"、"极端风险"等词汇，则触发硬性拦截
-        if "极端风险" in market_report or "熔断" in market_report:
-            logger.warning("🚨 [Quant Risk Engine] 触发硬性风控拦截：市场存在极端风险！")
-            return {
-                "triggered": True,
-                "action": "持有",
-                "reasoning": "量化风控系统检测到市场极端风险指标，触发一票否决机制，强制建议持有观望。"
-            }
+        try:
+            plan_data = json.loads(trader_plan_json)
+            action = plan_data.get("action", "")
+            target_price = plan_data.get("target_price")
+            
+            # 规则 1：极端风险关键词拦截
+            risk_keywords = ["熔断", "跌停潮", "系统性风险", "极端恐慌"]
+            for kw in risk_keywords:
+                if kw in market_report:
+                    logger.warning(f"🚨 [Quant Risk Engine] 触发硬性拦截：市场报告包含风险关键词 '{kw}'")
+                    return {
+                        "triggered": True,
+                        "action": "持有",
+                        "reasoning": f"量化风控检测到市场存在'{kw}'等极端风险指标，触发强制持有观望机制。"
+                    }
+            
+            # 规则 2：非理性的预期收益率拦截
+            # 如果是买入建议，且目标价远高于当前（需要当前价数据，此处简化）
+            # 这里暂时只检查目标价是否存在
+            if action == "买入" and target_price is None:
+                logger.warning("🚨 [Quant Risk Engine] 触发硬性拦截：买入决策缺少目标价位")
+                return {
+                    "triggered": True,
+                    "action": "持有",
+                    "reasoning": "买入决策必须包含具体的目标价位，当前计划不符合风控要求。"
+                }
+
+        except Exception as e:
+            logger.error(f"⚠️ [Quant Risk Engine] 解析交易计划失败: {e}")
             
         return {"triggered": False}
 

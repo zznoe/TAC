@@ -51,6 +51,30 @@ logger = logging.getLogger("app.services.simple_analysis_service")
 config_service = ConfigService()
 
 
+async def query_collection_with_cursor(collection, query: dict, sort_fields: list, limit: int = 0):
+    """
+    通用 MongoDB 游标查询辅助函数
+    
+    Args:
+        collection: MongoDB 集合对象
+        query: 查询条件
+        sort_fields: 排序字段列表，如 [("created_at", -1)]
+        limit: 限制返回数量，0 表示不限制
+        
+    Returns:
+        list: 文档列表（已移除 _id 字段）
+    """
+    cursor = collection.find(query).sort(sort_fields)
+    if limit > 0:
+        cursor = cursor.limit(limit)
+    
+    results = []
+    async for doc in cursor:
+        doc.pop("_id", None)
+        results.append(doc)
+    return results
+
+
 async def get_provider_by_model_name(model_name: str) -> str:
     """
     根据模型名称从数据库配置中查找对应的供应商（异步版本）

@@ -44,21 +44,21 @@ class ConditionalLogic:
 
         # 死循环修复: 如果达到最大工具调用次数，强制结束
         if tool_call_count >= max_tool_calls:
-            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear Market")
-            return "Msg Clear Market"
+            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Join Analysts")
+            return "Join Analysts"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
         if market_report and len(market_report) > 100:
-            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear Market")
-            return "Msg Clear Market"
+            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Join Analysts")
+            return "Join Analysts"
 
         # 只有AIMessage才有tool_calls属性
         if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_market")
             return "tools_market"
 
-        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Msg Clear Market")
-        return "Msg Clear Market"
+        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Join Analysts")
+        return "Join Analysts"
 
     def should_continue_social(self, state: AgentState):
         """Determine if social media analysis should continue."""
@@ -82,21 +82,21 @@ class ConditionalLogic:
 
         # 死循环修复: 如果达到最大工具调用次数，强制结束
         if tool_call_count >= max_tool_calls:
-            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear Social")
-            return "Msg Clear Social"
+            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Join Analysts")
+            return "Join Analysts"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
         if sentiment_report and len(sentiment_report) > 100:
-            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear Social")
-            return "Msg Clear Social"
+            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Join Analysts")
+            return "Join Analysts"
 
         # 只有AIMessage才有tool_calls属性
         if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_social")
             return "tools_social"
 
-        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Msg Clear Social")
-        return "Msg Clear Social"
+        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Join Analysts")
+        return "Join Analysts"
 
     def should_continue_news(self, state: AgentState):
         """Determine if news analysis should continue."""
@@ -120,21 +120,21 @@ class ConditionalLogic:
 
         # 死循环修复: 如果达到最大工具调用次数，强制结束
         if tool_call_count >= max_tool_calls:
-            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Msg Clear News")
-            return "Msg Clear News"
+            logger.warning(f"🔧 [死循环修复] 达到最大工具调用次数，强制结束: Join Analysts")
+            return "Join Analysts"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
         if news_report and len(news_report) > 100:
-            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear News")
-            return "Msg Clear News"
+            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Join Analysts")
+            return "Join Analysts"
 
         # 只有AIMessage才有tool_calls属性
         if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_news")
             return "tools_news"
 
-        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Msg Clear News")
-        return "Msg Clear News"
+        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Join Analysts")
+        return "Join Analysts"
 
     def should_continue_fundamentals(self, state: AgentState):
         """判断基本面分析是否应该继续"""
@@ -181,22 +181,22 @@ class ConditionalLogic:
 
         # ✅ 优先级1: 如果已经有报告内容，说明分析已完成，不再循环
         if fundamentals_report and len(fundamentals_report) > 100:
-            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear Fundamentals")
-            return "Msg Clear Fundamentals"
+            logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Join Analysts")
+            return "Join Analysts"
 
         # ✅ 优先级2: 如果有tool_calls，去执行工具
         if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
             # 检查是否超过最大调用次数
             if tool_call_count >= max_tool_calls:
                 logger.warning(f"🔧 [死循环修复] 工具调用次数已达上限({tool_call_count}/{max_tool_calls})，但仍有tool_calls，强制结束")
-                return "Msg Clear Fundamentals"
+                return "Join Analysts"
 
             logger.info(f"🔀 [条件判断] 🔧 检测到tool_calls，返回: tools_fundamentals")
             return "tools_fundamentals"
 
         # ✅ 优先级3: 没有tool_calls，正常结束
-        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Msg Clear Fundamentals")
-        return "Msg Clear Fundamentals"
+        logger.info(f"🔀 [条件判断] ✅ 无tool_calls，返回: Join Analysts")
+        return "Join Analysts"
 
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""

@@ -16,6 +16,7 @@ BATCH_TASKS_PREFIX = "qa:batch_tasks:"
 USER_PROCESSING_PREFIX = "qa:user_processing:"
 GLOBAL_CONCURRENT_KEY = "qa:global_concurrent"
 VISIBILITY_TIMEOUT_PREFIX = "qa:visibility:"
+TIMEOUT_ZSET = "qa:timeouts"
 
 # 配置常量 - 开源版限制
 DEFAULT_USER_CONCURRENT_LIMIT = 3

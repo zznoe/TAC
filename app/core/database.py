@@ -362,6 +362,31 @@ async def create_database_indexes(db):
         await market_quotes.create_index([("amount", -1)])
         await market_quotes.create_index([("updated_at", -1)])
 
+        # analysis_tasks 的索引（用于任务列表查询优化）
+        analysis_tasks = db["analysis_tasks"]
+        await analysis_tasks.create_index([("user_id", 1), ("status", 1), ("created_at", -1)])
+        await analysis_tasks.create_index([("symbol", 1), ("status", 1)])
+        await analysis_tasks.create_index([("task_id", 1)], unique=True)
+        await analysis_tasks.create_index([("created_at", -1)])
+        await analysis_tasks.create_index([("started_at", -1)])
+
+        # quotes_ingestion 的索引（用于实时行情查询）
+        if "quotes_ingestion" in await db.list_collection_names():
+            quotes_ingestion = db["quotes_ingestion"]
+            await quotes_ingestion.create_index([("code", 1), ("updated_at", -1)])
+
+        # reports 的索引（用于报告查询优化）
+        reports = db["reports"]
+        await reports.create_index([("task_id", 1)], unique=True)
+        await reports.create_index([("symbol", 1), ("created_at", -1)])
+        await reports.create_index([("user_id", 1), ("created_at", -1)])
+        await reports.create_index([("created_at", -1)])
+
+        # favorites 的索引
+        favorites = db["favorites"]
+        await favorites.create_index([("user_id", 1), ("symbol", 1)], unique=True)
+        await favorites.create_index([("created_at", -1)])
+
         logger.info("✅ 数据库索引创建完成")
 
     except Exception as e:
