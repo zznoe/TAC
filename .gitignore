@@ -1,0 +1,243 @@
+# ==================== Python环境和缓存 ====================
+env/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# ==================== 环境变量文件 (包含敏感API密钥) ====================
+.env
+.env.local
+.env.*.local
+.env.db
+.env.mongodb*
+.env.vps.bak
+*.env.bak
+
+# 保留 .env.example 和 .env.docker
+!.env.example
+!.env.docker
+!.env
+
+# ==================== 前端构建产物 ====================
+frontend/dist
+frontend/node_modules
+frontend/.env*
+frontend/.vite
+
+# 保留前端源码必需的
+!frontend/src/**
+!frontend/public/**
+!frontend/index.html
+!frontend/vite.config.*
+!frontend/package*.json
+!frontend/tsconfig*.json
+!frontend/.eslintrc*
+!frontend/.prettier*
+!frontend/yarn.lock
+
+# ==================== 后端虚拟环境 ====================
+.venv/
+backend/
+
+# ==================== 系统文件 ====================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/settings.json
+
+# ==================== 数据文件 ====================
+data/**/*.csv
+data/**/*.xlsx
+data/**/*.xls
+*.csv
+*.xlsx
+*.xls
+
+# ==================== JSON运行时数据 ====================
+config/*.json
+!config/*.json.example
+data/**/*.json
+eval_results/**/*.json
+web/data/**/*.json
+web/eval_results/**/*.json
+web/config/*.json
+*.cache.json
+*_cache.json
+hk_stock_cache.json
+
+# ==================== 项目特定目录 ====================
+eval_results/
+eval_data/
+results/
+logs/
+temp/
+/cache/
+data/
+web/data/
+dataflows/data_cache/
+tradingagents/dataflows/data_cache/
+finnhub_data/
+enhanced_analysis_reports/
+web/finnhub_data/
+web/results/
+
+# 注意: 不要排除 tradingagents/ 根目录和 app/ 目录
+# 这些是核心源码
+
+# ==================== 运行时数据 ====================
+runtime/
+output/
+reports/
+images/
+
+# ==================== 第三方依赖 ====================
+vendors/
+node_modules/
+*.tsbuildinfo
+
+# ==================== 安装器和归档 ====================
+*.msi
+*.msix
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.xz
+*.archive
+*.bak
+*.old
+
+# ==================== 构建输出 ====================
+/dist/
+build/
+frontend/dist/
+release/
+
+# ==================== 日志和运行时 ====================
+*.log*
+*.pid
+*.pid.lock
+
+# ==================== 股票数据缓存 ====================
+*_stock_data_*.txt
+*_stock_data_*.json
+*_stock_data_*.csv
+china_stocks/
+us_stocks/
+stock_cache/
+
+# ==================== IDE ====================
+.vscode/
+.idea/
+
+# ==================== 测试 ====================
+.coverage
+.pytest_cache/
+htmlcov/
+
+# ==================== 文档构建 ====================
+docs/_build/
+site/
+
+# ==================== 特定文档(不纳入版本控制) ====================
+docs/OPTIMIZATION_PLAN.md
+docs/OPTIMIZATION_PLAN_EN.md
+docs/README_OPTIMIZATION.md
+COMMIT_SUMMARY.md
+*_PREVIEW_README.md
+RELEASE_NOTES_PREVIEW.md
+DEEPSEEK_PREVIEW_README.md
+docs/v1.0.0-preview/
+docs/contribution/
+
+# ==================== AI工具目录 ====================
+.trae/
+.augment/
+
+# ==================== 包元数据 ====================
+tradingagents.egg-info/
+
+# ==================== 临时文件 ====================
+*.tmp
+*.temp
+*.pyc.*
+*.pyo.*
+
+# ==================== Node/TS ====================
+*.tsbuildinfo
+frontend/.vite
+
+# ==================== 测试脚本 ====================
+test_mongodb_connection.py
+test_mongodb_fix.py
+verify_database_fix.py
+setup_mongodb_user.py
+test_*_conversion.py
+test_*_reports.py
+test_*_function.py
+test_export_simple.py
+test_wkhtmltopdf.py
+
+# ==================== 本地服务脚本 ====================
+start_local_services.bat
+stop_local_services.bat
+nginx/local.nginx.conf
+
+# ==================== 前端自动生成文件 ====================
+frontend/.eslintrc-auto-import.json
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+frontend/tsconfig.tsbuildinfo
+
+# ==================== 锁文件 ====================
+frontend/package-lock.json
+
+# ==================== 过时部署脚本 ====================
+scripts/deployment/assemble_portable_release.ps1
+scripts/deployment/assemble_portable_release_fixed.ps1
+scripts/deployment/build_portable_release.ps1
+scripts/deployment/package_with_7zip.ps1
+scripts/deployment/quick_sync_and_build.ps1
+scripts/deployment/stage_local_vendors.ps1
+
+# ==================== 临时脚本 ====================
+scripts/test_time_serialization.py
+scripts/create_mongodb_admin.py
+
+# ==================== Windows安装器 ====================
+scripts/windows-installer/nsis/*.exe
+scripts/windows-installer/nsis/*.zip
+
+# ==================== Streamlit缓存 ====================
+.streamlit/cache/
+
+# ==================== 过期文档 ====================
+docs/OPTIMIZATION_PLAN.md
+
+# ==================== 计划目录 ====================
+plan/
+
+# ==================== 特定项目文件 ====================
+back/
+data_backup_*/
+backups/
+.dockerignore
+
+# ==================== 项目特定忽略 ====================
+tradingagents/dataflows/data_cache/

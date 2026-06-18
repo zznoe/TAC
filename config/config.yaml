@@ -1,0 +1,13 @@
+﻿# 系统配置
+api_keys:
+  openai: ""
+  anthropic: ""
+
+trading:
+  initial_capital: 100000
+  risk_per_trade: 0.02
+  max_positions: 5
+
+logging:
+  level: INFO
+  file: logs/trading.log
