@@ -92,7 +92,8 @@ qianfan = ["qianfan>=0.4.20"]
 
 [project.scripts]
 tradingagents = "main:main"
+tac = "main:main"
 
 [tool.setuptools.packages.find]
-include = ["tradingagents*"]
+include = ["tradingagents*", "tac*"]
 exclude = ["tests*", "docs*", "scripts*", "data*", "logs*", "reports*", "results*", "eval_results*", "upstream_contribution*"]
